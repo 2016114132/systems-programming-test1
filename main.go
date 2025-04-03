@@ -32,7 +32,10 @@ func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer, openPorts 
 					// Convert the bytes data into string
 					banner = string(buffer[:n])
 					// Display the banner string
-					fmt.Printf("Banner from %s: %s\n", addr, banner)
+					fmt.Println("----------------------------------------------------------")
+					fmt.Printf("Connection to %s was successful\n", addr)
+					fmt.Printf("Banner: %s", banner)
+					fmt.Println("----------------------------------------------------------")
 				} else {
 					fmt.Printf("Connection to %s was successful (no banner)\n", addr)
 				}
