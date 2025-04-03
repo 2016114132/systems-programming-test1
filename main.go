@@ -19,6 +19,7 @@ func worker(
 	results *[]ScanResult,
 	mu *sync.Mutex,
 	endPort int,
+	portsFlag *string,
 ) {
 	defer wg.Done()
 	maxRetries := 3
@@ -31,7 +32,11 @@ func worker(
 			portStr := parts[1]
 
 			// Print a message to show which port is being scanned
-			fmt.Printf("Scanning port %s/%s from %s\n", portStr, strconv.Itoa(endPort), target)
+			if *portsFlag != "" {
+				fmt.Printf("Scanning port %s from %s\n", portStr, target)
+			} else {
+				fmt.Printf("Scanning port %s/%s from %s\n", portStr, strconv.Itoa(endPort), target)
+			}
 
 			conn, err := dialer.Dial("tcp", addr)
 			if err == nil {
@@ -109,6 +114,7 @@ func main() {
 	targets := flag.String("targets", "scanme.nmap.org", "List Of Targets Separated By Commas (e.g., scanme.nmap.org,example.com)")
 	startPort := flag.Int("start-port", 1, "Starting Port Number")
 	endPort := flag.Int("end-port", 1024, "Ending Port Number")
+	portsFlag := flag.String("ports", "", "List Of Specific Ports To Scan Separated By Commas (e.g., 80,22,443)")
 	workers := flag.Int("workers", 100, "Number Of Workers")
 	timeout := flag.Int("timeout", 5, "Timeout In Seconds")
 	jsonOutput := flag.Bool("json", false, "Output Results In JSON")
@@ -119,6 +125,29 @@ func main() {
 	// Split the targets strings
 	targetList := strings.Split(*targets, ",")
 
+	// We will add all the ports to scan into an int array
+	var ports []int
+	if *portsFlag != "" {
+		// If the user specified ports, parse them and append it to the ports list
+		portStrings := strings.Split(*portsFlag, ",")
+		for _, ps := range portStrings {
+			// Convert string to int and trim spaces incase the user added them
+			p, err := strconv.Atoi(strings.TrimSpace(ps))
+
+			// Append converted port to the list or handle invalid ports entered by the user
+			if err == nil {
+				ports = append(ports, p)
+			} else {
+				fmt.Printf("Invalid port: %s\n", ps)
+			}
+		}
+	} else {
+		// Use range instead
+		for p := *startPort; p <= *endPort; p++ {
+			ports = append(ports, p)
+		}
+	}
+
 	dialer := net.Dialer{
 		// We timeout based on the amount of seconds specified by the user
 		Timeout: time.Duration(*timeout) * time.Second,
@@ -127,13 +156,13 @@ func main() {
 	// We create the number of workers specified by the user
 	for i := 1; i <= *workers; i++ {
 		wg.Add(1)
-		go worker(&wg, tasks, dialer, &results, &mu, *endPort)
+		go worker(&wg, tasks, dialer, &results, &mu, *endPort, portsFlag)
 	}
 
 	// We loop through the list of targets provided by the user
 	for _, target := range targetList {
-		// We loop between ports specified by the user for the current target
-		for p := *startPort; p <= *endPort; p++ {
+		// We loop through the list of ports specified by the user for the current target
+		for _, p := range ports {
 			port := strconv.Itoa(p)
 			address := net.JoinHostPort(target, port)
 			tasks <- address
@@ -147,7 +176,7 @@ func main() {
 	fmt.Println("\n---------------------------------")
 	fmt.Println("Scan Summary:")
 	fmt.Printf("\nOpen ports: %d\n", len(results))
-	fmt.Printf("Total ports scanned: %d\n", *endPort-*startPort+1)
+	fmt.Printf("Total ports scanned: %d\n", len(ports)*len(targetList))
 	fmt.Printf("Time taken: %v\n", duration)
 
 	if *jsonOutput {
