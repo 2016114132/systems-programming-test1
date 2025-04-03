@@ -19,8 +19,28 @@ func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer, openPorts 
 		for i := range maxRetries {
 			conn, err := dialer.Dial("tcp", addr)
 			if err == nil {
+				// This prevents hanging forever if no data is sent by the server
+				conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+				// Create a space in memory to store the response
+				buffer := make([]byte, 1024)
+
+				// We attempt to read the data from the server
+				n, err := conn.Read(buffer)
+				var banner string
+				if err == nil && n > 0 {
+					// Convert the bytes data into string
+					banner = string(buffer[:n])
+					// Display the banner string
+					fmt.Printf("Banner from %s: %s\n", addr, banner)
+				} else {
+					fmt.Printf("Connection to %s was successful (no banner)\n", addr)
+				}
+
 				conn.Close()
-				fmt.Printf("Connection to %s was successful\n", addr)
+
+				// conn.Close()
+				// fmt.Printf("Connection to %s was successful\n", addr)
 
 				// Extract the port number part from the addr string
 				portStr := strings.Split(addr, ":")[1]
