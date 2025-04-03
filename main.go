@@ -11,12 +11,18 @@ import (
 )
 
 // Modify the worker function to accept
-func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer, openPorts *[]string, mu *sync.Mutex) {
+func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer, openPorts *[]string, mu *sync.Mutex, endPort int) {
 	defer wg.Done()
 	maxRetries := 3
 	for addr := range tasks {
 		var success bool
 		for i := range maxRetries {
+			// Extract the port number part from the addr string
+			portStr := strings.Split(addr, ":")[1]
+
+			// Print a message to show which port is being scanned
+			fmt.Printf("Scanning port %s/%s\n", portStr, strconv.Itoa(endPort))
+
 			conn, err := dialer.Dial("tcp", addr)
 			if err == nil {
 				// This prevents hanging forever if no data is sent by the server
@@ -41,12 +47,6 @@ func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer, openPorts 
 				}
 
 				conn.Close()
-
-				// conn.Close()
-				// fmt.Printf("Connection to %s was successful\n", addr)
-
-				// Extract the port number part from the addr string
-				portStr := strings.Split(addr, ":")[1]
 
 				// Multiple workers might try to add to the array at the same time.
 				// This can cause the application to crash or produce incorrect results.
@@ -102,7 +102,7 @@ func main() {
 	// We create the number of workers specified by the user
 	for i := 1; i <= *workers; i++ {
 		wg.Add(1)
-		go worker(&wg, tasks, dialer, &openPorts, &mu)
+		go worker(&wg, tasks, dialer, &openPorts, &mu, *endPort)
 	}
 
 	// We loop between ports specified by the user
