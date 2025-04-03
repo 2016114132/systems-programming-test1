@@ -18,6 +18,7 @@ func worker(
 	dialer net.Dialer,
 	results *[]ScanResult,
 	mu *sync.Mutex,
+	// Parameters below are used to help determin how to display the message when a port is being scanned
 	endPort int,
 	portsFlag *string,
 ) {
@@ -26,12 +27,12 @@ func worker(
 	for addr := range tasks {
 		var success bool
 		for i := range maxRetries {
-			// Split the addr string into 2 parts, the target and the port
+			// Split the addr string into 2 parts, the target and the port. This will be used below
 			parts := strings.Split(addr, ":")
 			target := parts[0]
 			portStr := parts[1]
 
-			// Print a message to show which port is being scanned
+			// Print a message to show which port is being scanned based on if its a range or specific ports
 			if *portsFlag != "" {
 				fmt.Printf("Scanning port %s from %s\n", portStr, target)
 			} else {
@@ -52,12 +53,14 @@ func worker(
 				if err == nil && n > 0 {
 					// Convert the bytes data into string
 					banner = string(buffer[:n])
+
 					// Display the banner string
 					fmt.Println("----------------------------------------------------------")
 					fmt.Printf("Connection to %s was successful\n", addr)
 					fmt.Printf("Banner: %s", banner)
 					fmt.Println("----------------------------------------------------------")
 				} else {
+					// If there is no banner, just print that its successful but there is no banner
 					fmt.Printf("Connection to %s was successful (no banner)\n", addr)
 				}
 
@@ -89,6 +92,7 @@ func worker(
 	}
 }
 
+// Structure of how each result will be stored
 type ScanResult struct {
 	Target string `json:"target"`
 	Port   string `json:"port"`
@@ -96,21 +100,20 @@ type ScanResult struct {
 }
 
 func main() {
-	// Keeps track of how the time to know how long the operation takes
+	// Keeps track of the time to know how long the operation takes
 	start := time.Now()
 
 	var wg sync.WaitGroup
 	tasks := make(chan string, 100)
 
 	// Array to keep track of open ports
-	// var openPorts []string
 	var results []ScanResult
 
 	// A mutual exclusion needs to be used to make sure only one goroutine can access a variable at a time to avoid conflicts
 	var mu sync.Mutex
 
 	// Define flags with default values
-	// Flags allow users to pass values when they run the program
+	// Flags allow users to pass values through command line when they run the program
 	targets := flag.String("targets", "scanme.nmap.org", "List Of Targets Separated By Commas (e.g., scanme.nmap.org,example.com)")
 	startPort := flag.Int("start-port", 1, "Starting Port Number")
 	endPort := flag.Int("end-port", 1024, "Ending Port Number")
@@ -142,7 +145,7 @@ func main() {
 			}
 		}
 	} else {
-		// Use range instead
+		// Use user specified a range instead, loop through the range and add them to the ports array
 		for p := *startPort; p <= *endPort; p++ {
 			ports = append(ports, p)
 		}
@@ -179,6 +182,7 @@ func main() {
 	fmt.Printf("Total ports scanned: %d\n", len(ports)*len(targetList))
 	fmt.Printf("Time taken: %v\n", duration)
 
+	// If the user added the json tag, we display the result in json format
 	if *jsonOutput {
 		// Converts the data into a well formated JSON
 		jsonData, err := json.MarshalIndent(results, "", "  ")
