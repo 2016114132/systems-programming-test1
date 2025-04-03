@@ -85,7 +85,8 @@ func main() {
 
 	// Define flags with default values
 	// Flags allow users to pass values when they run the program
-	target := flag.String("target", "scanme.nmap.org", "Target IP Address Or Hostname")
+	// target := flag.String("target", "scanme.nmap.org", "Target IP Address Or Hostname")
+	targets := flag.String("targets", "scanme.nmap.org", "List Of Targets Separated By Commas (e.g., scanme.nmap.org,example.com)")
 	startPort := flag.Int("start-port", 1, "Starting Port Number")
 	endPort := flag.Int("end-port", 1024, "Ending Port Number")
 	workers := flag.Int("workers", 100, "Number Of Workers")
@@ -93,6 +94,9 @@ func main() {
 
 	// Parse the flags from command line
 	flag.Parse()
+
+	// Split the targets strings
+	targetList := strings.Split(*targets, ",")
 
 	dialer := net.Dialer{
 		// We timeout based on the amount of seconds specified by the user
@@ -105,11 +109,14 @@ func main() {
 		go worker(&wg, tasks, dialer, &openPorts, &mu, *endPort)
 	}
 
-	// We loop between ports specified by the user
-	for p := *startPort; p <= *endPort; p++ {
-		port := strconv.Itoa(p)
-		address := net.JoinHostPort(*target, port)
-		tasks <- address
+	// We loop through the list of targets provided by the user
+	for _, target := range targetList {
+		// We loop between ports specified by the user for the current target
+		for p := *startPort; p <= *endPort; p++ {
+			port := strconv.Itoa(p)
+			address := net.JoinHostPort(target, port)
+			tasks <- address
+		}
 	}
 	close(tasks)
 	wg.Wait()
