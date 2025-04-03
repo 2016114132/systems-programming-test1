@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
@@ -11,17 +12,26 @@ import (
 )
 
 // Modify the worker function to accept
-func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer, openPorts *[]string, mu *sync.Mutex, endPort int) {
+func worker(
+	wg *sync.WaitGroup,
+	tasks chan string,
+	dialer net.Dialer,
+	results *[]ScanResult,
+	mu *sync.Mutex,
+	endPort int,
+) {
 	defer wg.Done()
 	maxRetries := 3
 	for addr := range tasks {
 		var success bool
 		for i := range maxRetries {
-			// Extract the port number part from the addr string
-			portStr := strings.Split(addr, ":")[1]
+			// Split the addr string into 2 parts, the target and the port
+			parts := strings.Split(addr, ":")
+			target := parts[0]
+			portStr := parts[1]
 
 			// Print a message to show which port is being scanned
-			fmt.Printf("Scanning port %s/%s\n", portStr, strconv.Itoa(endPort))
+			fmt.Printf("Scanning port %s/%s from %s\n", portStr, strconv.Itoa(endPort), target)
 
 			conn, err := dialer.Dial("tcp", addr)
 			if err == nil {
@@ -54,7 +64,11 @@ func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer, openPorts 
 				// This lock the array while one goroutine is adding to it, then unlocks it after it's done.
 				// This prevents other goroutines to update it while its being used by another goroutine.
 				mu.Lock()
-				*openPorts = append(*openPorts, portStr)
+				*results = append(*results, ScanResult{
+					Target: target,
+					Port:   portStr,
+					Banner: banner,
+				})
 				mu.Unlock()
 
 				success = true
@@ -70,6 +84,12 @@ func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer, openPorts 
 	}
 }
 
+type ScanResult struct {
+	Target string `json:"target"`
+	Port   string `json:"port"`
+	Banner string `json:"banner"`
+}
+
 func main() {
 	// Keeps track of how the time to know how long the operation takes
 	start := time.Now()
@@ -78,19 +98,20 @@ func main() {
 	tasks := make(chan string, 100)
 
 	// Array to keep track of open ports
-	var openPorts []string
+	// var openPorts []string
+	var results []ScanResult
 
 	// A mutual exclusion needs to be used to make sure only one goroutine can access a variable at a time to avoid conflicts
 	var mu sync.Mutex
 
 	// Define flags with default values
 	// Flags allow users to pass values when they run the program
-	// target := flag.String("target", "scanme.nmap.org", "Target IP Address Or Hostname")
 	targets := flag.String("targets", "scanme.nmap.org", "List Of Targets Separated By Commas (e.g., scanme.nmap.org,example.com)")
 	startPort := flag.Int("start-port", 1, "Starting Port Number")
 	endPort := flag.Int("end-port", 1024, "Ending Port Number")
 	workers := flag.Int("workers", 100, "Number Of Workers")
 	timeout := flag.Int("timeout", 5, "Timeout In Seconds")
+	jsonOutput := flag.Bool("json", false, "Output Results In JSON")
 
 	// Parse the flags from command line
 	flag.Parse()
@@ -106,7 +127,7 @@ func main() {
 	// We create the number of workers specified by the user
 	for i := 1; i <= *workers; i++ {
 		wg.Add(1)
-		go worker(&wg, tasks, dialer, &openPorts, &mu, *endPort)
+		go worker(&wg, tasks, dialer, &results, &mu, *endPort)
 	}
 
 	// We loop through the list of targets provided by the user
@@ -125,8 +146,21 @@ func main() {
 	duration := time.Since(start)
 	fmt.Println("\n---------------------------------")
 	fmt.Println("Scan Summary:")
-	fmt.Printf("\nOpen ports: %d\n", len(openPorts))
+	fmt.Printf("\nOpen ports: %d\n", len(results))
 	fmt.Printf("Total ports scanned: %d\n", *endPort-*startPort+1)
 	fmt.Printf("Time taken: %v\n", duration)
+
+	if *jsonOutput {
+		// Converts the data into a well formated JSON
+		jsonData, err := json.MarshalIndent(results, "", "  ")
+
+		if err != nil {
+			fmt.Println("Error encoding results to JSON:", err)
+		} else {
+			fmt.Println("\nScan Results (JSON):")
+			fmt.Println(string(jsonData))
+		}
+	}
+
 	fmt.Println("---------------------------------")
 }
