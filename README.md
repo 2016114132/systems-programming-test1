@@ -1,5 +1,7 @@
 # Go Port Scanner Tool
 
+####  Homework #1 Video Link: https://www.youtube.com/watch?v=8k7HNCdTwDo
+
 ## 📌 Description
 
 This tool is a concurrent TCP port scanner written in Go. It allows scanning one or more targets using either a custom range of ports or specific ports, and provides advanced features such as:
